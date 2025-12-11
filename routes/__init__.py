@@ -1,0 +1,1 @@
+from .detection_routes import detection_router
