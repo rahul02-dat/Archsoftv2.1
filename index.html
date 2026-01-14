@@ -220,7 +220,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         image_base64: imageBase64,
-                        location: 'Auto Camera'
+                        location: 'Auto Camera',
+                        increment_detection: false
                     })
                 });
                 
@@ -235,13 +236,15 @@
                     data.detections.forEach(detection => {
                         currentPeopleIds.add(detection.person_id);
                         
-                        if (detection.is_match) {
+                        const now = Date.now();
+                        const isNewPerson = !activePeople.has(detection.person_id);
+                        
+                        if (isNewPerson && detection.is_match) {
                             matchesFound++;
                         }
                         
                         const lastNotified = lastNotificationTime.get(detection.person_id) || 0;
-                        const now = Date.now();
-                        const shouldNotify = !activePeople.has(detection.person_id) || (now - lastNotified) > NOTIFICATION_COOLDOWN;
+                        const shouldNotify = isNewPerson || (now - lastNotified) > NOTIFICATION_COOLDOWN;
                         
                         if (shouldNotify) {
                             newDetections.push(detection);

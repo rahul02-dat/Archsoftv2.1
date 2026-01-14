@@ -45,6 +45,7 @@ async def recognize_face(
             is_match = False
             matched_person = None
             confidence = 1.0
+            should_increment = request.increment_detection
             
             if stored_embeddings:
                 is_match, confidence, match_idx = face_recognition_system.verify_face(
@@ -56,21 +57,24 @@ async def recognize_face(
                     matched_person = persons[match_idx]
                     
                     matched_person.last_seen = datetime.now(IST)
-                    matched_person.total_detections += 1
                     
-                    old_avg = matched_person.average_confidence
-                    old_count = matched_person.total_detections - 1
-                    new_avg = ((old_avg * old_count) + confidence) / matched_person.total_detections
-                    matched_person.average_confidence = new_avg
+                    if should_increment:
+                        matched_person.total_detections += 1
+                        
+                        old_avg = matched_person.average_confidence
+                        old_count = matched_person.total_detections - 1
+                        new_avg = ((old_avg * old_count) + confidence) / matched_person.total_detections
+                        matched_person.average_confidence = new_avg
                     
-                    detection_record = Detection(
-                        person_id=matched_person.person_id,
-                        detection_time=datetime.now(IST),
-                        confidence_score=confidence,
-                        location=request.location or "Unknown"
-                    )
-                    
-                    db.add(detection_record)
+                    if should_increment:
+                        detection_record = Detection(
+                            person_id=matched_person.person_id,
+                            detection_time=datetime.now(IST),
+                            confidence_score=confidence,
+                            location=request.location or "Unknown"
+                        )
+                        
+                        db.add(detection_record)
             
             if not is_match:
                 new_person_id = generate_person_id(db)

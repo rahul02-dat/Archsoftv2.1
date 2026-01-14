@@ -4,7 +4,8 @@ from typing import Optional, List
 
 class DetectionRequest(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image")
-    location: Optional[str] = Field(None, description="Optional location information")
+    location: Optional[str] = Field(default=None, description="Optional location information")
+    increment_detection: bool = Field(default=True, description="Whether to increment detection count")
 
 class BoundingBox(BaseModel):
     x1: int
