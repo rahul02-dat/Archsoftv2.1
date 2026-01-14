@@ -23,20 +23,19 @@
         </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Camera Feed -->
             <div class="lg:col-span-2">
                 <div class="bg-gray-800 rounded-lg p-6">
                     <h2 class="text-2xl font-bold mb-4">Live Camera Feed</h2>
                     
                     <div class="relative bg-black rounded-lg overflow-hidden">
-                        <video id="video" autoplay playsinline class="w-full" style="transform: scaleX(-1);"></video>
+                        <video id="video" autoplay playsinline class="w-full" style="transform: scaleX(-1); display: block;"></video>
                         
-                        <!-- Overlay for detection -->
+                        <canvas id="overlayCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+                        
                         <div id="overlay" class="absolute top-4 left-4 right-4 bg-black bg-opacity-75 rounded-lg p-4" style="display: none;">
                             <div id="overlayContent"></div>
                         </div>
                         
-                        <!-- Processing indicator -->
                         <div id="processingIndicator" class="absolute bottom-4 right-4 bg-yellow-600 px-4 py-2 rounded-lg font-semibold" style="display: none;">
                             Processing...
                         </div>
@@ -60,7 +59,6 @@
                     <canvas id="canvas" style="display: none;"></canvas>
                 </div>
                 
-                <!-- Settings -->
                 <div class="bg-gray-800 rounded-lg p-6 mt-6">
                     <h2 class="text-xl font-bold mb-4">Settings</h2>
                     <div class="space-y-4">
@@ -86,9 +84,7 @@
                 </div>
             </div>
             
-            <!-- Detection Log & Persons List -->
             <div class="space-y-6">
-                <!-- Latest Detection -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <h2 class="text-xl font-bold mb-4">Latest Detection</h2>
                     <div id="latestDetection" class="text-center text-gray-500 py-8">
@@ -96,7 +92,6 @@
                     </div>
                 </div>
                 
-                <!-- Detection Log -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold">Detection Log</h2>
@@ -107,7 +102,6 @@
                     </div>
                 </div>
                 
-                <!-- Persons List -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold">Detected Persons</h2>
@@ -125,13 +119,15 @@
         const API_URL = window.location.origin;
         let stream = null;
         let isRunning = false;
-        let scanInterval = 3000; // milliseconds
+        let scanInterval = 3000;
         let scanIntervalId = null;
         let totalScans = 0;
         let matchesFound = 0;
         let detectionLog = [];
+        let activePeople = new Map();
+        let lastNotificationTime = new Map();
+        const NOTIFICATION_COOLDOWN = 10000;
         
-        // Sound effect (simple beep using Web Audio API)
         function playBeep(isMatch) {
             if (!document.getElementById('soundToggle').checked) return;
             
@@ -162,7 +158,15 @@
                     } 
                 });
                 
-                document.getElementById('video').srcObject = stream;
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                video.addEventListener('loadedmetadata', () => {
+                    const overlayCanvas = document.getElementById('overlayCanvas');
+                    overlayCanvas.width = video.videoWidth;
+                    overlayCanvas.height = video.videoHeight;
+                });
+                
                 return true;
                 
             } catch (error) {
@@ -179,6 +183,47 @@
             }
         }
         
+        function drawBoundingBoxes(detections) {
+            const video = document.getElementById('video');
+            const overlayCanvas = document.getElementById('overlayCanvas');
+            const ctx = overlayCanvas.getContext('2d');
+            
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
+            const scaleX = overlayCanvas.width / video.videoWidth;
+            const scaleY = overlayCanvas.height / video.videoHeight;
+            
+            detections.forEach(detection => {
+                const bbox = detection.bbox;
+                const x1 = bbox.x1 * scaleX;
+                const y1 = bbox.y1 * scaleY;
+                const width = (bbox.x2 - bbox.x1) * scaleX;
+                const height = (bbox.y2 - bbox.y1) * scaleY;
+                
+                const flippedX = overlayCanvas.width - x1 - width;
+                
+                const color = detection.is_match ? '#10b981' : '#3b82f6';
+                
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(flippedX, y1, width, height);
+                
+                const labelBg = detection.is_match ? '#10b981' : '#3b82f6';
+                const labelText = `${detection.person_id} (${(detection.confidence_score * 100).toFixed(1)}%)`;
+                
+                ctx.font = 'bold 14px sans-serif';
+                const textMetrics = ctx.measureText(labelText);
+                const textWidth = textMetrics.width;
+                const textHeight = 20;
+                
+                ctx.fillStyle = labelBg;
+                ctx.fillRect(flippedX, y1 - textHeight - 5, textWidth + 10, textHeight + 5);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(labelText, flippedX + 5, y1 - 8);
+            });
+        }
+        
         async function captureAndRecognize() {
             if (!isRunning) return;
             
@@ -192,7 +237,6 @@
             
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
             
-            // Show processing indicator
             document.getElementById('processingIndicator').style.display = 'block';
             
             try {
@@ -207,21 +251,58 @@
                 
                 const data = await response.json();
                 
-                if (data.success) {
+                if (data.success && data.detections && data.detections.length > 0) {
                     totalScans++;
-                    if (data.is_match) {
-                        matchesFound++;
+                    
+                    const currentPeopleIds = new Set();
+                    const newDetections = [];
+                    
+                    data.detections.forEach(detection => {
+                        currentPeopleIds.add(detection.person_id);
+                        
+                        if (detection.is_match) {
+                            matchesFound++;
+                        }
+                        
+                        const lastNotified = lastNotificationTime.get(detection.person_id) || 0;
+                        const now = Date.now();
+                        const shouldNotify = !activePeople.has(detection.person_id) || (now - lastNotified) > NOTIFICATION_COOLDOWN;
+                        
+                        if (shouldNotify) {
+                            newDetections.push(detection);
+                            lastNotificationTime.set(detection.person_id, now);
+                            playBeep(detection.is_match);
+                        }
+                        
+                        activePeople.set(detection.person_id, {
+                            ...detection,
+                            lastSeen: now
+                        });
+                    });
+                    
+                    const peopleToRemove = [];
+                    activePeople.forEach((value, key) => {
+                        if (!currentPeopleIds.has(key)) {
+                            peopleToRemove.push(key);
+                        }
+                    });
+                    peopleToRemove.forEach(id => {
+                        activePeople.delete(id);
+                        lastNotificationTime.delete(id);
+                    });
+                    
+                    drawBoundingBoxes(data.detections);
+                    
+                    if (newDetections.length > 0) {
+                        displayDetection(newDetections);
+                        newDetections.forEach(det => addToLog(det));
                     }
                     
                     updateCounters();
-                    displayDetection(data);
-                    addToLog(data);
                     
-                    if (document.getElementById('autoRefreshToggle').checked) {
+                    if (document.getElementById('autoRefreshToggle').checked && newDetections.length > 0) {
                         loadPersons();
                     }
-                    
-                    playBeep(data.is_match);
                 }
                 
             } catch (error) {
@@ -231,65 +312,71 @@
             }
         }
         
-        function displayDetection(data) {
+        function displayDetection(detections) {
             const latestDetection = document.getElementById('latestDetection');
             const overlay = document.getElementById('overlay');
             const overlayContent = document.getElementById('overlayContent');
             
-            const matchClass = data.is_match ? 'bg-green-900 border-green-700' : 'bg-blue-900 border-blue-700';
-            const matchText = data.is_match ? 'MATCH' : 'NEW';
-            const matchIcon = data.is_match ? '✓' : '★';
-            
-            const content = `
-                <div class="${matchClass} border-2 rounded-lg p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-2xl font-bold">${matchText}</span>
-                        <span class="text-3xl">${matchIcon}</span>
-                    </div>
-                    <p class="text-xl font-bold mb-2">${data.person_id}</p>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                            <p class="text-gray-400">Confidence</p>
-                            <p class="font-bold">${(data.confidence_score * 100).toFixed(1)}%</p>
+            const content = detections.map(detection => {
+                const matchClass = detection.is_match ? 'bg-green-900 border-green-700' : 'bg-blue-900 border-blue-700';
+                const matchText = detection.is_match ? 'MATCH' : 'NEW';
+                const matchIcon = detection.is_match ? '✓' : '★';
+                
+                return `
+                    <div class="${matchClass} border-2 rounded-lg p-4 mb-2">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-2xl font-bold">${matchText}</span>
+                            <span class="text-3xl">${matchIcon}</span>
                         </div>
-                        <div>
-                            <p class="text-gray-400">Detections</p>
-                            <p class="font-bold">${data.total_detections}</p>
+                        <p class="text-xl font-bold mb-2">${detection.person_id}</p>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <p class="text-gray-400">Confidence</p>
+                                <p class="font-bold">${(detection.confidence_score * 100).toFixed(1)}%</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-400">Detections</p>
+                                <p class="font-bold">${detection.total_detections}</p>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            }).join('');
             
             latestDetection.innerHTML = content;
-            overlayContent.innerHTML = `
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-2xl font-bold">${matchText}: ${data.person_id}</p>
-                        <p class="text-sm">Confidence: ${(data.confidence_score * 100).toFixed(1)}%</p>
-                    </div>
-                    <span class="text-4xl">${matchIcon}</span>
-                </div>
-            `;
             
-            // Show overlay briefly
+            overlayContent.innerHTML = detections.map(detection => {
+                const matchText = detection.is_match ? 'MATCH' : 'NEW';
+                const matchIcon = detection.is_match ? '✓' : '★';
+                
+                return `
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <p class="text-2xl font-bold">${matchText}: ${detection.person_id}</p>
+                            <p class="text-sm">Confidence: ${(detection.confidence_score * 100).toFixed(1)}%</p>
+                        </div>
+                        <span class="text-4xl">${matchIcon}</span>
+                    </div>
+                `;
+            }).join('');
+            
             overlay.style.display = 'block';
             setTimeout(() => {
                 overlay.style.display = 'none';
             }, 3000);
         }
         
-        function addToLog(data) {
+        function addToLog(detection) {
             const logEntry = {
                 timestamp: new Date(),
-                person_id: data.person_id,
-                is_match: data.is_match,
-                confidence: data.confidence_score,
-                total_detections: data.total_detections
+                person_id: detection.person_id,
+                is_match: detection.is_match,
+                confidence: detection.confidence_score,
+                total_detections: detection.total_detections
             };
             
             detectionLog.unshift(logEntry);
             
-            // Keep only last 50 entries
             if (detectionLog.length > 50) {
                 detectionLog = detectionLog.slice(0, 50);
             }
@@ -368,7 +455,6 @@
             document.getElementById('intervalValue').textContent = value;
             document.getElementById('scanInterval').textContent = value + 's';
             
-            // Restart scanning with new interval if running
             if (isRunning) {
                 stopScanning();
                 startScanning();
@@ -392,7 +478,6 @@
             const statusText = document.getElementById('statusText');
             
             if (!isRunning) {
-                // Start system
                 const cameraStarted = await startCamera();
                 
                 if (cameraStarted) {
@@ -404,20 +489,22 @@
                     statusIndicator.classList.add('bg-green-500', 'animate-pulse');
                     statusText.textContent = 'Running';
                     
-                    // Wait for video to be ready
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    // Start automatic scanning
                     startScanning();
-                    
-                    // Initial person load
                     loadPersons();
                 }
             } else {
-                // Stop system
                 isRunning = false;
                 stopScanning();
                 stopCamera();
+                
+                activePeople.clear();
+                lastNotificationTime.clear();
+                
+                const overlayCanvas = document.getElementById('overlayCanvas');
+                const ctx = overlayCanvas.getContext('2d');
+                ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
                 
                 toggleBtn.textContent = 'Start System';
                 toggleBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
@@ -428,12 +515,10 @@
             }
         }
         
-        // Load persons on page load
         window.addEventListener('load', () => {
             loadPersons();
         });
         
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             stopScanning();
             stopCamera();

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from schema import DetectionRequest, DetectionResponse, PersonListResponse
+from schema import DetectionRequest, DetectionResponse, PersonListResponse, SingleFaceDetection, BoundingBox
 from models import Person, Detection
 from utils import face_recognition_system
 from datetime import datetime
@@ -12,11 +12,9 @@ detection_router = APIRouter(prefix="/detection", tags=["Detection"])
 IST = pytz.timezone('Asia/Kolkata')
 
 def generate_person_id(db: Session) -> str:
-    """Generate unique person ID in format AUTO_P00001"""
     last_person = db.query(Person).order_by(Person.id.desc()).first()
     
     if last_person:
-        # Extract number from last person_id (AUTO_P00001 -> 1)
         last_num = int(last_person.person_id.split('_P')[1])
         new_num = last_num + 1
     else:
@@ -29,102 +27,98 @@ async def recognize_face(
     request: DetectionRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Automated face recognition endpoint
-    - If face matches: Returns match info and updates last_seen
-    - If face is new: Auto-registers with new person_id
-    """
     try:
-        # Process the image
-        embedding, message = face_recognition_system.process_detection_image(request.image_base64)
+        face_results, message = face_recognition_system.process_detection_image(request.image_base64)
         
-        if embedding is None:
+        if face_results is None:
             raise HTTPException(status_code=400, detail=message)
         
-        # Get all registered persons
         persons = db.query(Person).all()
+        stored_embeddings = [person.embedding for person in persons] if persons else []
         
-        # Check for match
-        if persons:
-            stored_embeddings = [person.embedding for person in persons]
-            is_match, confidence, match_idx = face_recognition_system.verify_face(
-                embedding, 
-                stored_embeddings
-            )
+        detections = []
+        
+        for face_data in face_results:
+            embedding = face_data['embedding']
+            bbox = face_data['bbox']
             
-            if is_match:
-                # Update existing person
-                matched_person = persons[match_idx]
+            is_match = False
+            matched_person = None
+            confidence = 1.0
+            
+            if stored_embeddings:
+                is_match, confidence, match_idx = face_recognition_system.verify_face(
+                    embedding, 
+                    stored_embeddings
+                )
                 
-                # Update last_seen and statistics
-                matched_person.last_seen = datetime.now(IST)
-                matched_person.total_detections += 1
+                if is_match:
+                    matched_person = persons[match_idx]
+                    
+                    matched_person.last_seen = datetime.now(IST)
+                    matched_person.total_detections += 1
+                    
+                    old_avg = matched_person.average_confidence
+                    old_count = matched_person.total_detections - 1
+                    new_avg = ((old_avg * old_count) + confidence) / matched_person.total_detections
+                    matched_person.average_confidence = new_avg
+                    
+                    detection_record = Detection(
+                        person_id=matched_person.person_id,
+                        detection_time=datetime.now(IST),
+                        confidence_score=confidence,
+                        location=request.location or "Unknown"
+                    )
+                    
+                    db.add(detection_record)
+            
+            if not is_match:
+                new_person_id = generate_person_id(db)
+                embedding_bytes = face_recognition_system.serialize_embedding(embedding)
                 
-                # Update average confidence
-                old_avg = matched_person.average_confidence
-                old_count = matched_person.total_detections - 1
-                new_avg = ((old_avg * old_count) + confidence) / matched_person.total_detections
-                matched_person.average_confidence = new_avg
+                new_person = Person(
+                    person_id=new_person_id,
+                    first_seen=datetime.now(IST),
+                    last_seen=datetime.now(IST),
+                    total_detections=1,
+                    average_confidence=1.0,
+                    embedding=embedding_bytes
+                )
                 
-                # Log detection
+                db.add(new_person)
+                
                 detection_record = Detection(
-                    person_id=matched_person.person_id,
+                    person_id=new_person_id,
                     detection_time=datetime.now(IST),
-                    confidence_score=confidence,
+                    confidence_score=1.0,
                     location=request.location or "Unknown"
                 )
                 
                 db.add(detection_record)
-                db.commit()
-                db.refresh(matched_person)
                 
-                return DetectionResponse(
-                    success=True,
-                    is_match=True,
-                    person_id=matched_person.person_id,
-                    confidence_score=confidence,
-                    first_seen=matched_person.first_seen,
-                    last_seen=matched_person.last_seen,
-                    total_detections=matched_person.total_detections,
-                    message=f"MATCH FOUND: {matched_person.person_id}"
-                )
+                matched_person = new_person
+                confidence = 1.0
+            
+            db.flush()
+            db.refresh(matched_person)
+            
+            detections.append(SingleFaceDetection(
+                is_match=is_match,
+                person_id=matched_person.person_id,
+                confidence_score=confidence,
+                first_seen=matched_person.first_seen,
+                last_seen=matched_person.last_seen,
+                total_detections=matched_person.total_detections,
+                bbox=BoundingBox(**bbox)
+            ))
         
-        # No match found - Auto-register new person
-        new_person_id = generate_person_id(db)
-        embedding_bytes = face_recognition_system.serialize_embedding(embedding)
-        
-        new_person = Person(
-            person_id=new_person_id,
-            first_seen=datetime.now(IST),
-            last_seen=datetime.now(IST),
-            total_detections=1,
-            average_confidence=1.0,  # First detection, perfect match with itself
-            embedding=embedding_bytes
-        )
-        
-        db.add(new_person)
-        
-        # Log first detection
-        detection_record = Detection(
-            person_id=new_person_id,
-            detection_time=datetime.now(IST),
-            confidence_score=1.0,
-            location=request.location or "Unknown"
-        )
-        
-        db.add(detection_record)
         db.commit()
-        db.refresh(new_person)
         
         return DetectionResponse(
             success=True,
-            is_match=False,
-            person_id=new_person.person_id,
-            confidence_score=1.0,
-            first_seen=new_person.first_seen,
-            last_seen=new_person.last_seen,
-            total_detections=1,
-            message=f"NEW PERSON REGISTERED: {new_person_id}"
+            faces_detected=len(detections),
+            detections=detections,
+            message=f"Detected {len(detections)} face(s)"
         )
         
     except HTTPException:
@@ -138,7 +132,6 @@ async def recognize_face(
 
 @detection_router.get("/persons")
 async def list_all_persons(db: Session = Depends(get_db)):
-    """List all detected persons"""
     try:
         persons = db.query(Person).order_by(Person.last_seen.desc()).all()
         
@@ -165,7 +158,6 @@ async def get_person_history(
     person_id: str,
     db: Session = Depends(get_db)
 ):
-    """Get detection history for a specific person"""
     person = db.query(Person).filter(Person.person_id == person_id).first()
     
     if not person:
@@ -194,17 +186,14 @@ async def get_person_history(
 
 @detection_router.delete("/person/{person_id}")
 async def delete_person(person_id: str, db: Session = Depends(get_db)):
-    """Delete a person and all their detection records"""
     try:
         person = db.query(Person).filter(Person.person_id == person_id).first()
         
         if not person:
             raise HTTPException(status_code=404, detail="Person not found")
         
-        # Delete all detection records
         db.query(Detection).filter(Detection.person_id == person_id).delete()
         
-        # Delete person
         db.delete(person)
         db.commit()
         
@@ -218,14 +207,9 @@ async def delete_person(person_id: str, db: Session = Depends(get_db)):
 
 @detection_router.delete("/reset-all")
 async def reset_all_data(db: Session = Depends(get_db)):
-    """Reset all persons and detections (USE WITH CAUTION)"""
     try:
-        # Delete all detections
         db.query(Detection).delete()
-        
-        # Delete all persons
         db.query(Person).delete()
-        
         db.commit()
         
         return {"message": "All data reset successfully"}
@@ -236,15 +220,11 @@ async def reset_all_data(db: Session = Depends(get_db)):
 
 @detection_router.get("/stats")
 async def get_system_stats(db: Session = Depends(get_db)):
-    """Get system statistics"""
     try:
         total_persons = db.query(Person).count()
         total_detections = db.query(Detection).count()
         
-        # Get most recently seen person
         recent_person = db.query(Person).order_by(Person.last_seen.desc()).first()
-        
-        # Get most detected person
         most_detected = db.query(Person).order_by(Person.total_detections.desc()).first()
         
         return {

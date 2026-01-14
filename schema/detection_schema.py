@@ -1,32 +1,30 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
-
-'''REQUESTS'''
+from typing import Optional, List
 
 class DetectionRequest(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image")
     location: Optional[str] = Field(None, description="Optional location information")
 
-'''RESPONSES'''
+class BoundingBox(BaseModel):
+    x1: int
+    y1: int
+    x2: int
+    y2: int
 
-class MatchResponse(BaseModel):
-    is_match: bool
-    person_id: Optional[str] = None
-    confidence_score: Optional[float] = None
-    first_seen: Optional[datetime] = None
-    last_seen: Optional[datetime] = None
-    total_detections: Optional[int] = None
-    message: str
-
-class DetectionResponse(BaseModel):
-    success: bool
+class SingleFaceDetection(BaseModel):
     is_match: bool
     person_id: str
     confidence_score: float
     first_seen: datetime
     last_seen: datetime
     total_detections: int
+    bbox: BoundingBox
+
+class DetectionResponse(BaseModel):
+    success: bool
+    faces_detected: int
+    detections: List[SingleFaceDetection]
     message: str
 
 class PersonListResponse(BaseModel):
