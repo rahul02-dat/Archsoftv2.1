@@ -4,7 +4,7 @@ from database import get_db
 from schema import DetectionRequest, DetectionResponse, PersonListResponse, SingleFaceDetection, BoundingBox
 from models import Person, Detection
 from utils import face_recognition_system
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 detection_router = APIRouter(prefix="/detection", tags=["Detection"])
@@ -56,9 +56,18 @@ async def recognize_face(
                 if is_match:
                     matched_person = persons[match_idx]
                     
-                    matched_person.last_seen = datetime.now(IST)
+                    current_time = datetime.now(IST)
                     
-                    if should_increment:
+                    last_seen = matched_person.last_seen
+                    if last_seen.tzinfo is None:
+                        last_seen = IST.localize(last_seen)
+                    
+                    time_since_last_seen = current_time - last_seen
+                    should_increment_for_this_person = time_since_last_seen > timedelta(hours=24)
+                    
+                    matched_person.last_seen = current_time
+                    
+                    if should_increment and should_increment_for_this_person:
                         matched_person.total_detections += 1
                         
                         old_avg = matched_person.average_confidence
@@ -66,10 +75,10 @@ async def recognize_face(
                         new_avg = ((old_avg * old_count) + confidence) / matched_person.total_detections
                         matched_person.average_confidence = new_avg
                     
-                    if should_increment:
+                    if should_increment and should_increment_for_this_person:
                         detection_record = Detection(
                             person_id=matched_person.person_id,
-                            detection_time=datetime.now(IST),
+                            detection_time=current_time,
                             confidence_score=confidence,
                             location=request.location or "Unknown"
                         )
