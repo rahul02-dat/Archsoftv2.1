@@ -44,7 +44,7 @@
                     <div class="mt-4 grid grid-cols-3 gap-4 text-center">
                         <div class="bg-gray-700 rounded-lg p-3">
                             <p class="text-gray-400 text-sm">Scan Interval</p>
-                            <p class="text-2xl font-bold" id="scanInterval">3s</p>
+                            <p class="text-2xl font-bold">1s</p>
                         </div>
                         <div class="bg-gray-700 rounded-lg p-3">
                             <p class="text-gray-400 text-sm">Total Scans</p>
@@ -57,30 +57,6 @@
                     </div>
                     
                     <canvas id="canvas" style="display: none;"></canvas>
-                </div>
-                
-                <div class="bg-gray-800 rounded-lg p-6 mt-6">
-                    <h2 class="text-xl font-bold mb-4">Settings</h2>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm mb-2">Scan Interval (seconds)</label>
-                            <input type="range" id="intervalSlider" min="1" max="10" value="3" 
-                                class="w-full" onchange="updateInterval(this.value)">
-                            <p class="text-sm text-gray-400 mt-1">Current: <span id="intervalValue">3</span> seconds</p>
-                        </div>
-                        <div>
-                            <label class="flex items-center">
-                                <input type="checkbox" id="soundToggle" checked class="mr-2">
-                                <span>Enable sound notifications</span>
-                            </label>
-                        </div>
-                        <div>
-                            <label class="flex items-center">
-                                <input type="checkbox" id="autoRefreshToggle" checked class="mr-2">
-                                <span>Auto-refresh person list</span>
-                            </label>
-                        </div>
-                    </div>
                 </div>
             </div>
             
@@ -119,18 +95,17 @@
         const API_URL = window.location.origin;
         let stream = null;
         let isRunning = false;
-        let scanInterval = 3000;
+        const scanInterval = 1000;
         let scanIntervalId = null;
         let totalScans = 0;
         let matchesFound = 0;
         let detectionLog = [];
         let activePeople = new Map();
         let lastNotificationTime = new Map();
+        let loggedPeople = new Set();
         const NOTIFICATION_COOLDOWN = 10000;
         
         function playBeep(isMatch) {
-            if (!document.getElementById('soundToggle').checked) return;
-            
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
@@ -272,6 +247,11 @@
                             newDetections.push(detection);
                             lastNotificationTime.set(detection.person_id, now);
                             playBeep(detection.is_match);
+                            
+                            if (!loggedPeople.has(detection.person_id)) {
+                                addToLog(detection);
+                                loggedPeople.add(detection.person_id);
+                            }
                         }
                         
                         activePeople.set(detection.person_id, {
@@ -295,14 +275,10 @@
                     
                     if (newDetections.length > 0) {
                         displayDetection(newDetections);
-                        newDetections.forEach(det => addToLog(det));
+                        loadPersons();
                     }
                     
                     updateCounters();
-                    
-                    if (document.getElementById('autoRefreshToggle').checked && newDetections.length > 0) {
-                        loadPersons();
-                    }
                 }
                 
             } catch (error) {
@@ -416,6 +392,7 @@
         function clearLog() {
             if (confirm('Clear detection log?')) {
                 detectionLog = [];
+                loggedPeople.clear();
                 updateLogDisplay();
             }
         }
@@ -447,17 +424,6 @@
                 }
             } catch (error) {
                 console.error('Error loading persons:', error);
-            }
-        }
-        
-        function updateInterval(value) {
-            scanInterval = value * 1000;
-            document.getElementById('intervalValue').textContent = value;
-            document.getElementById('scanInterval').textContent = value + 's';
-            
-            if (isRunning) {
-                stopScanning();
-                startScanning();
             }
         }
         
