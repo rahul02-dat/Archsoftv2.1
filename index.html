@@ -5,18 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-Store Manager - Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+        body {
+            font-feature-settings: "kern" 1;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen">
+<body class="bg-black text-white min-h-screen">
     <div class="container mx-auto px-4 py-8">
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-4xl font-bold">AI-Store Manager</h1>
             <div class="flex items-center space-x-4">
                 <div id="statusIndicator" class="flex items-center">
-                    <div class="w-3 h-3 rounded-full bg-gray-500 mr-2"></div>
-                    <span id="statusText">Stopped</span>
+                    <div class="w-3 h-3 rounded-full bg-gray-600 mr-2"></div>
+                    <span id="statusText" class="font-medium">Stopped</span>
                 </div>
                 <button id="toggleBtn" onclick="toggleSystem()" 
-                    class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold">
+                    class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition-colors">
                     Start System
                 </button>
             </div>
@@ -24,15 +34,15 @@
         
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2">
-                <div class="bg-gray-800 rounded-lg p-6">
+                <div class="bg-gray-900 rounded-lg p-6 border border-gray-800">
                     <h2 class="text-2xl font-bold mb-4">Live Camera Feed</h2>
                     
-                    <div class="relative bg-black rounded-lg overflow-hidden">
+                    <div class="relative bg-black rounded-lg overflow-hidden border border-gray-800">
                         <video id="video" autoplay playsinline class="w-full" style="transform: scaleX(-1); display: block;"></video>
                         
                         <canvas id="overlayCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
                         
-                        <div id="overlay" class="absolute top-4 left-4 right-4 bg-black bg-opacity-75 rounded-lg p-4" style="display: none;">
+                        <div id="overlay" class="absolute top-4 left-4 right-4 bg-black bg-opacity-90 rounded-lg p-4 border border-gray-700" style="display: none;">
                             <div id="overlayContent"></div>
                         </div>
                         
@@ -42,12 +52,12 @@
                     </div>
                     
                     <div class="mt-4 grid grid-cols-2 gap-4 text-center">
-                        <div class="bg-gray-700 rounded-lg p-4">
-                            <p class="text-gray-400 text-sm mb-1">Total Scans</p>
+                        <div class="bg-gray-900 rounded-lg p-4 border border-gray-800">
+                            <p class="text-gray-400 text-sm mb-1 font-medium">Total Scans</p>
                             <p class="text-3xl font-bold" id="totalScans">0</p>
                         </div>
-                        <div class="bg-gray-700 rounded-lg p-4">
-                            <p class="text-gray-400 text-sm mb-1">Total Matches Found</p>
+                        <div class="bg-gray-900 rounded-lg p-4 border border-gray-800">
+                            <p class="text-gray-400 text-sm mb-1 font-medium">Total Matches Found</p>
                             <p class="text-3xl font-bold" id="matchesFound">0</p>
                         </div>
                     </div>
@@ -57,17 +67,17 @@
             </div>
             
             <div class="space-y-6">
-                <div class="bg-gray-800 rounded-lg p-6">
+                <div class="bg-gray-900 rounded-lg p-6 border border-gray-800">
                     <h2 class="text-xl font-bold mb-4">Latest Detection</h2>
                     <div id="latestDetection" class="text-center text-gray-500 py-8">
                         Waiting for detection...
                     </div>
                 </div>
                 
-                <div class="bg-gray-800 rounded-lg p-6">
+                <div class="bg-gray-900 rounded-lg p-6 border border-gray-800">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold">Detection Log</h2>
-                        <button onclick="clearLog()" class="text-sm text-red-400 hover:text-red-300">Clear</button>
+                        <button onclick="clearLog()" class="text-sm text-red-400 hover:text-red-300 font-medium transition-colors">Clear</button>
                     </div>
                     <div id="detectionLog" class="space-y-2 max-h-96 overflow-y-auto">
                         <p class="text-gray-500 text-sm text-center py-4">No detections yet</p>
@@ -172,7 +182,7 @@
                 const labelBg = detection.is_match ? '#10b981' : '#3b82f6';
                 const labelText = `${detection.person_id} (${(detection.confidence_score * 100).toFixed(1)}%)`;
                 
-                ctx.font = 'bold 14px sans-serif';
+                ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
                 const textMetrics = ctx.measureText(labelText);
                 const textWidth = textMetrics.width;
                 const textHeight = 20;
@@ -182,6 +192,17 @@
                 
                 ctx.fillStyle = '#ffffff';
                 ctx.fillText(labelText, flippedX + 5, y1 - 8);
+            });
+        }
+        
+        function formatDateTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric',
+                hour: '2-digit', 
+                minute: '2-digit'
             });
         }
         
@@ -283,24 +304,32 @@
             
             const content = detections.map(detection => {
                 const matchClass = detection.is_match ? 'bg-green-900 border-green-700' : 'bg-blue-900 border-blue-700';
-                const matchText = detection.is_match ? 'MATCH' : 'NEW';
-                const matchIcon = detection.is_match ? '✓' : '★';
+                const matchText = detection.is_match ? 'Match' : 'New';
                 
                 return `
                     <div class="${matchClass} border-2 rounded-lg p-4 mb-2">
-                        <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center justify-between mb-3">
                             <span class="text-2xl font-bold">${matchText}</span>
-                            <span class="text-3xl">${matchIcon}</span>
                         </div>
-                        <p class="text-xl font-bold mb-2">${detection.person_id}</p>
-                        <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div>
-                                <p class="text-gray-400">Confidence</p>
-                                <p class="font-bold">${(detection.confidence_score * 100).toFixed(1)}%</p>
+                        <p class="text-xl font-bold mb-3">${detection.person_id}</p>
+                        <div class="space-y-2 text-sm">
+                            ${detection.is_match ? `
+                                <div class="flex justify-between">
+                                    <span class="text-gray-300">First Seen:</span>
+                                    <span class="font-semibold">${formatDateTime(detection.first_seen)}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-300">Last Seen:</span>
+                                    <span class="font-semibold">${formatDateTime(detection.last_seen)}</span>
+                                </div>
+                            ` : ''}
+                            <div class="flex justify-between">
+                                <span class="text-gray-300">Confidence:</span>
+                                <span class="font-semibold">${(detection.confidence_score * 100).toFixed(1)}%</span>
                             </div>
-                            <div>
-                                <p class="text-gray-400">Detections</p>
-                                <p class="font-bold">${detection.total_detections}</p>
+                            <div class="flex justify-between">
+                                <span class="text-gray-300">Total Detections:</span>
+                                <span class="font-semibold">${detection.total_detections}</span>
                             </div>
                         </div>
                     </div>
@@ -311,15 +340,11 @@
             
             overlayContent.innerHTML = detections.map(detection => {
                 const matchText = detection.is_match ? 'MATCH' : 'NEW';
-                const matchIcon = detection.is_match ? '✓' : '★';
                 
                 return `
-                    <div class="flex items-center justify-between mb-2">
-                        <div>
-                            <p class="text-2xl font-bold">${matchText}: ${detection.person_id}</p>
-                            <p class="text-sm">Confidence: ${(detection.confidence_score * 100).toFixed(1)}%</p>
-                        </div>
-                        <span class="text-4xl">${matchIcon}</span>
+                    <div class="mb-2">
+                        <p class="text-2xl font-bold">${matchText}: ${detection.person_id}</p>
+                        <p class="text-sm text-gray-300">Confidence: ${(detection.confidence_score * 100).toFixed(1)}%</p>
                     </div>
                 `;
             }).join('');
@@ -358,18 +383,19 @@
             
             logContainer.innerHTML = detectionLog.map(entry => {
                 const matchClass = entry.is_match ? 'bg-green-900 border-green-700' : 'bg-blue-900 border-blue-700';
-                const matchIcon = entry.is_match ? '🎯' : '🆕';
+                const matchText = entry.is_match ? 'MATCH' : 'NEW';
                 
                 return `
-                    <div class="${matchClass} border-l-4 rounded p-2">
+                    <div class="${matchClass} border-l-4 rounded p-3">
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
-                                <p class="font-bold text-sm">${matchIcon} ${entry.person_id}</p>
-                                <p class="text-xs text-gray-400">${entry.timestamp.toLocaleTimeString()}</p>
+                                <p class="font-bold text-sm mb-1">${matchText}</p>
+                                <p class="font-semibold text-sm">${entry.person_id}</p>
+                                <p class="text-xs text-gray-400 mt-1">${entry.timestamp.toLocaleTimeString()}</p>
                             </div>
                             <div class="text-right">
                                 <p class="text-xs font-bold">${(entry.confidence * 100).toFixed(1)}%</p>
-                                <p class="text-xs text-gray-400">#${entry.total_detections}</p>
+                                <p class="text-xs text-gray-400 mt-1">Count: ${entry.total_detections}</p>
                             </div>
                         </div>
                     </div>
@@ -414,7 +440,7 @@
                     toggleBtn.textContent = 'Stop System';
                     toggleBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                     toggleBtn.classList.add('bg-red-600', 'hover:bg-red-700');
-                    statusIndicator.classList.remove('bg-gray-500');
+                    statusIndicator.classList.remove('bg-gray-600');
                     statusIndicator.classList.add('bg-green-500', 'animate-pulse');
                     statusText.textContent = 'Running';
                     
@@ -438,7 +464,7 @@
                 toggleBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
                 toggleBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                 statusIndicator.classList.remove('bg-green-500', 'animate-pulse');
-                statusIndicator.classList.add('bg-gray-500');
+                statusIndicator.classList.add('bg-gray-600');
                 statusText.textContent = 'Stopped';
             }
         }
