@@ -6,21 +6,32 @@ from models import Person, Detection
 from utils import face_recognition_system
 from datetime import datetime, timedelta
 import pytz
+import random
+import string
 
 detection_router = APIRouter(prefix="/detection", tags=["Detection"])
 
 IST = pytz.timezone('Asia/Kolkata')
 
 def generate_person_id(db: Session) -> str:
-    last_person = db.query(Person).order_by(Person.id.desc()).first()
-    
-    if last_person:
-        last_num = int(last_person.person_id.split('_P')[1])
-        new_num = last_num + 1
-    else:
-        new_num = 1
-    
-    return f"AUTO_P{new_num:05d}"
+    """
+    Generate a random person ID in format: PersonID:ABC123XYZ
+    Ensures uniqueness by checking against existing IDs
+    """
+    while True:
+        # Generate random alphanumeric string (mix of uppercase letters and numbers)
+        # Format: 3 letters + 3 numbers + 3 letters (total 9 characters)
+        letters1 = ''.join(random.choices(string.ascii_uppercase, k=3))
+        numbers = ''.join(random.choices(string.digits, k=3))
+        letters2 = ''.join(random.choices(string.ascii_uppercase, k=3))
+        
+        random_id = f"{letters1}{numbers}{letters2}"
+        person_id = f"PersonID:{random_id}"
+        
+        # Check if this ID already exists
+        existing = db.query(Person).filter(Person.person_id == person_id).first()
+        if not existing:
+            return person_id
 
 @detection_router.post("/recognize", response_model=DetectionResponse)
 async def recognize_face(
