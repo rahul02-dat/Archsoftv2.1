@@ -40,9 +40,9 @@ if __name__ == "__main__":
     create_tables()
 
 app = FastAPI(
-    title="Automated Face Recognition System",
-    description="Automated face detection and tracking system using RetinaFace detection and ArcFace embeddings",
-    version="1.0.0"
+    title="AI Store Manager",
+    description="AI-powered store management system with automated face recognition",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -69,8 +69,8 @@ async def root():
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return {
-        "message": "Automated Face Recognition System API",
-        "version": "1.0.0",
+        "message": "AI Store Manager API",
+        "version": "2.0.0",
         "description": "System automatically detects and tracks faces",
         "endpoints": {
             "recognize": "/detection/recognize - Submit image for automatic recognition",
