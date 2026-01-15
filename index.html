@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automated Face Recognition - Live</title>
+    <title>AI-Store Manager - Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
     <div class="container mx-auto px-4 py-8">
         <div class="flex justify-between items-center mb-8">
-            <h1 class="text-4xl font-bold">Automated Face Recognition - LIVE</h1>
+            <h1 class="text-4xl font-bold">AI-Store Manager</h1>
             <div class="flex items-center space-x-4">
                 <div id="statusIndicator" class="flex items-center">
                     <div class="w-3 h-3 rounded-full bg-gray-500 mr-2"></div>
@@ -41,18 +41,14 @@
                         </div>
                     </div>
                     
-                    <div class="mt-4 grid grid-cols-3 gap-4 text-center">
-                        <div class="bg-gray-700 rounded-lg p-3">
-                            <p class="text-gray-400 text-sm">Scan Interval</p>
-                            <p class="text-2xl font-bold">1s</p>
+                    <div class="mt-4 grid grid-cols-2 gap-4 text-center">
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <p class="text-gray-400 text-sm mb-1">Total Scans</p>
+                            <p class="text-3xl font-bold" id="totalScans">0</p>
                         </div>
-                        <div class="bg-gray-700 rounded-lg p-3">
-                            <p class="text-gray-400 text-sm">Total Scans</p>
-                            <p class="text-2xl font-bold" id="totalScans">0</p>
-                        </div>
-                        <div class="bg-gray-700 rounded-lg p-3">
-                            <p class="text-gray-400 text-sm">Matches Found</p>
-                            <p class="text-2xl font-bold" id="matchesFound">0</p>
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <p class="text-gray-400 text-sm mb-1">Total Matches Found</p>
+                            <p class="text-3xl font-bold" id="matchesFound">0</p>
                         </div>
                     </div>
                     
@@ -75,16 +71,6 @@
                     </div>
                     <div id="detectionLog" class="space-y-2 max-h-96 overflow-y-auto">
                         <p class="text-gray-500 text-sm text-center py-4">No detections yet</p>
-                    </div>
-                </div>
-                
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold">Detected Persons</h2>
-                        <button onclick="loadPersons()" class="text-sm text-blue-400 hover:text-blue-300">Refresh</button>
-                    </div>
-                    <div id="personsList" class="space-y-2 max-h-96 overflow-y-auto">
-                        <p class="text-gray-500 text-sm text-center py-4">Loading...</p>
                     </div>
                 </div>
             </div>
@@ -278,7 +264,6 @@
                     
                     if (newDetections.length > 0) {
                         displayDetection(newDetections);
-                        loadPersons();
                     }
                     
                     updateCounters();
@@ -405,31 +390,6 @@
             document.getElementById('matchesFound').textContent = matchesFound;
         }
         
-        async function loadPersons() {
-            try {
-                const response = await fetch(`${API_URL}/detection/persons`);
-                const data = await response.json();
-                
-                const personsList = document.getElementById('personsList');
-                
-                if (data.total === 0) {
-                    personsList.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">No persons detected yet</p>';
-                } else {
-                    personsList.innerHTML = data.persons.slice(0, 10).map(person => `
-                        <div class="bg-gray-700 rounded-lg p-3">
-                            <p class="font-bold">${person.person_id}</p>
-                            <div class="text-xs text-gray-400 mt-1">
-                                <p>Detections: ${person.total_detections}</p>
-                                <p>Avg: ${(person.average_confidence * 100).toFixed(1)}%</p>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error('Error loading persons:', error);
-            }
-        }
-        
         function startScanning() {
             scanIntervalId = setInterval(captureAndRecognize, scanInterval);
         }
@@ -461,7 +421,6 @@
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     startScanning();
-                    loadPersons();
                 }
             } else {
                 isRunning = false;
@@ -483,10 +442,6 @@
                 statusText.textContent = 'Stopped';
             }
         }
-        
-        window.addEventListener('load', () => {
-            loadPersons();
-        });
         
         window.addEventListener('beforeunload', () => {
             stopScanning();
