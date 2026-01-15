@@ -309,27 +309,27 @@
                 return `
                     <div class="${matchClass} border-2 rounded-lg p-4 mb-2">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="text-2xl font-bold">${matchText}</span>
+                            <span class="text-2xl font-bold text-white">${matchText}</span>
                         </div>
-                        <p class="text-xl font-bold mb-3">${detection.person_id}</p>
+                        <p class="text-xl font-bold mb-3 text-white">${detection.person_id}</p>
                         <div class="space-y-2 text-sm">
                             ${detection.is_match ? `
                                 <div class="flex justify-between">
                                     <span class="text-gray-300">First Seen:</span>
-                                    <span class="font-semibold">${formatDateTime(detection.first_seen)}</span>
+                                    <span class="font-semibold text-white">${formatDateTime(detection.first_seen)}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-300">Last Seen:</span>
-                                    <span class="font-semibold">${formatDateTime(detection.last_seen)}</span>
+                                    <span class="font-semibold text-white">${formatDateTime(detection.last_seen)}</span>
                                 </div>
                             ` : ''}
                             <div class="flex justify-between">
                                 <span class="text-gray-300">Confidence:</span>
-                                <span class="font-semibold">${(detection.confidence_score * 100).toFixed(1)}%</span>
+                                <span class="font-semibold text-white">${(detection.confidence_score * 100).toFixed(1)}%</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-300">Total Detections:</span>
-                                <span class="font-semibold">${detection.total_detections}</span>
+                                <span class="font-semibold text-white">${detection.total_detections}</span>
                             </div>
                         </div>
                     </div>
@@ -389,13 +389,13 @@
                     <div class="${matchClass} border-l-4 rounded p-3">
                         <div class="flex justify-between items-start">
                             <div class="flex-1">
-                                <p class="font-bold text-sm mb-1">${matchText}</p>
-                                <p class="font-semibold text-sm">${entry.person_id}</p>
-                                <p class="text-xs text-gray-400 mt-1">${entry.timestamp.toLocaleTimeString()}</p>
+                                <p class="font-bold text-sm mb-1 text-white">${matchText}</p>
+                                <p class="font-semibold text-sm text-white">${entry.person_id}</p>
+                                <p class="text-xs text-gray-300 mt-1">${entry.timestamp.toLocaleTimeString()}</p>
                             </div>
                             <div class="text-right">
-                                <p class="text-xs font-bold">${(entry.confidence * 100).toFixed(1)}%</p>
-                                <p class="text-xs text-gray-400 mt-1">Count: ${entry.total_detections}</p>
+                                <p class="text-xs font-bold text-white">${(entry.confidence * 100).toFixed(1)}%</p>
+                                <p class="text-xs text-gray-300 mt-1">Count: ${entry.total_detections}</p>
                             </div>
                         </div>
                     </div>
