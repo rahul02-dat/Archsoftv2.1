@@ -10,24 +10,43 @@ import pickle
 class UniformMatcher:
     """Analyzes clothing color to detect employees wearing uniforms"""
     
-    def __init__(self, reference_image_path: str = "uniform_reference.jpg"):
+    def __init__(self, reference_image_path: str = "uniform_refrence.jpg"):
         self.reference_hist = None
         self.uniform_threshold = float(os.getenv("UNIFORM_THRESHOLD", "0.4"))
+        self.enabled = False
+        
+        # Check absolute path
+        abs_path = os.path.abspath(reference_image_path)
+        print(f"\n{'='*60}")
+        print(f"UNIFORM DETECTION INITIALIZATION")
+        print(f"{'='*60}")
+        print(f"Looking for: {abs_path}")
         
         if os.path.exists(reference_image_path):
-            self._load_reference_uniform(reference_image_path)
-            print(f"✓ Uniform Reference Loaded: {reference_image_path}")
-            print(f"  - Uniform Detection Threshold: {self.uniform_threshold}")
+            if self._load_reference_uniform(reference_image_path):
+                self.enabled = True
+                print(f"✓ Uniform Detection ENABLED")
+                print(f"  - Reference: {reference_image_path}")
+                print(f"  - Threshold: {self.uniform_threshold}")
+            else:
+                print(f"✗ Uniform Detection FAILED to initialize")
         else:
-            print(f"⚠ Warning: Uniform reference image not found at {reference_image_path}")
-            print(f"  - Employee detection will be disabled")
+            print(f"✗ Reference image NOT FOUND")
+            print(f"  - Employee detection DISABLED")
+            print(f"\n  To enable uniform detection:")
+            print(f"  1. Place uniform image at: {abs_path}")
+            print(f"  2. Restart the application")
+        print(f"{'='*60}\n")
     
     def _load_reference_uniform(self, image_path: str):
         """Load reference uniform image and calculate its color histogram"""
         try:
             img = cv2.imread(image_path)
             if img is None:
-                raise ValueError(f"Could not load image: {image_path}")
+                print(f"✗ Error: Could not read image file")
+                return False
+            
+            print(f"✓ Image loaded: {img.shape[1]}x{img.shape[0]} pixels")
             
             # Convert to HSV color space (better for color matching)
             hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -41,9 +60,18 @@ class UniformMatcher:
             
             self.reference_hist = hist
             
+            # Show color info for debugging
+            avg_hue = np.mean(hsv[:,:,0])
+            avg_sat = np.mean(hsv[:,:,1])
+            print(f"✓ Reference histogram calculated")
+            print(f"  - Avg Hue: {avg_hue:.1f}, Avg Sat: {avg_sat:.1f}")
+            
+            return True
+            
         except Exception as e:
             print(f"✗ Error loading uniform reference: {str(e)}")
             self.reference_hist = None
+            return False
     
     def _extract_body_region(self, image: np.ndarray, face_bbox: Dict) -> Optional[np.ndarray]:
         """Extract the torso/body region below the face for clothing analysis"""
@@ -78,7 +106,7 @@ class UniformMatcher:
         Returns:
             Tuple[bool, float]: (is_employee, similarity_score)
         """
-        if self.reference_hist is None:
+        if self.reference_hist is None or not self.enabled:
             return False, 0.0
         
         try:
@@ -103,6 +131,10 @@ class UniformMatcher:
             similarity = max(0.0, similarity)
             
             is_employee = similarity >= self.uniform_threshold
+            
+            # Debug logging (you can comment this out in production)
+            if similarity > 0.2:  # Only log if there's some similarity
+                print(f"  Uniform check: similarity={similarity:.3f}, threshold={self.uniform_threshold:.3f}, is_employee={is_employee}")
             
             return is_employee, float(similarity)
             
