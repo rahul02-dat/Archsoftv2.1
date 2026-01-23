@@ -230,18 +230,6 @@ class UniformMatcher:
             
             is_employee = combined_similarity >= self.uniform_threshold
             
-            # Enhanced debug logging
-            print(f"\n  ═══ Uniform Detection Analysis ═══")
-            print(f"  Combined Histogram: {hist_similarity:.3f}")
-            print(f"  Hue Channel: {h_similarity:.3f}")
-            print(f"  Saturation Channel: {s_similarity:.3f}")
-            print(f"  Color Statistics: {color_stat_similarity:.3f}")
-            print(f"  ─────────────────────────────────")
-            print(f"  FINAL SCORE: {combined_similarity:.3f}")
-            print(f"  Threshold: {self.uniform_threshold:.3f}")
-            print(f"  Result: {'✓ EMPLOYEE' if is_employee else '✗ Customer'}")
-            print(f"  ═══════════════════════════════════\n")
-            
             return is_employee, float(combined_similarity)
             
         except Exception as e:
