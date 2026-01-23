@@ -19,8 +19,6 @@ def generate_person_id(db: Session) -> str:
     Ensures uniqueness by checking against existing IDs
     """
     while True:
-        # Generate random alphanumeric string (mix of uppercase letters and numbers)
-        # Format: 3 letters + 3 numbers + 3 letters (total 9 characters)
         letters1 = ''.join(random.choices(string.ascii_uppercase, k=3))
         numbers = ''.join(random.choices(string.digits, k=3))
         letters2 = ''.join(random.choices(string.ascii_uppercase, k=3))
@@ -28,7 +26,6 @@ def generate_person_id(db: Session) -> str:
         random_id = f"{letters1}{numbers}{letters2}"
         person_id = f"PersonID:{random_id}"
         
-        # Check if this ID already exists
         existing = db.query(Person).filter(Person.person_id == person_id).first()
         if not existing:
             return person_id
@@ -52,6 +49,11 @@ async def recognize_face(
         for face_data in face_results:
             embedding = face_data['embedding']
             bbox = face_data['bbox']
+            is_employee = face_data['is_employee']
+            uniform_score = face_data['uniform_score']
+            
+            # Determine role based on uniform detection
+            detected_role = "Employee" if is_employee else "Customer"
             
             is_match = False
             matched_person = None
@@ -69,6 +71,12 @@ async def recognize_face(
                     
                     current_time = datetime.now(IST)
                     
+                    # Role upgrade logic: Customer -> Employee (when detected wearing uniform)
+                    if matched_person.role == "Customer" and detected_role == "Employee":
+                        matched_person.role = "Employee"
+                        print(f"✓ Role upgraded: {matched_person.person_id} Customer -> Employee (uniform detected)")
+                    
+                    # Update last seen time
                     last_seen = matched_person.last_seen
                     if last_seen.tzinfo is None:
                         last_seen = IST.localize(last_seen)
@@ -106,7 +114,8 @@ async def recognize_face(
                     last_seen=datetime.now(IST),
                     total_detections=1,
                     average_confidence=1.0,
-                    embedding=embedding_bytes
+                    embedding=embedding_bytes,
+                    role=detected_role  # Set role based on uniform detection
                 )
                 
                 db.add(new_person)
@@ -133,7 +142,8 @@ async def recognize_face(
                 first_seen=matched_person.first_seen,
                 last_seen=matched_person.last_seen,
                 total_detections=matched_person.total_detections,
-                bbox=BoundingBox(**bbox)
+                bbox=BoundingBox(**bbox),
+                role=matched_person.role  # Include role in response
             ))
         
         db.commit()
@@ -168,7 +178,8 @@ async def list_all_persons(db: Session = Depends(get_db)):
                     first_seen=person.first_seen,
                     last_seen=person.last_seen,
                     total_detections=person.total_detections,
-                    average_confidence=person.average_confidence
+                    average_confidence=person.average_confidence,
+                    role=person.role
                 )
                 for person in persons
             ]
@@ -197,6 +208,7 @@ async def get_person_history(
         "last_seen": person.last_seen,
         "total_detections": person.total_detections,
         "average_confidence": person.average_confidence,
+        "role": person.role,
         "detection_history": [
             {
                 "id": det.id,
@@ -247,6 +259,8 @@ async def get_system_stats(db: Session = Depends(get_db)):
     try:
         total_persons = db.query(Person).count()
         total_detections = db.query(Detection).count()
+        total_employees = db.query(Person).filter(Person.role == "Employee").count()
+        total_customers = db.query(Person).filter(Person.role == "Customer").count()
         
         recent_person = db.query(Person).order_by(Person.last_seen.desc()).first()
         most_detected = db.query(Person).order_by(Person.total_detections.desc()).first()
@@ -254,13 +268,17 @@ async def get_system_stats(db: Session = Depends(get_db)):
         return {
             "total_persons": total_persons,
             "total_detections": total_detections,
+            "total_employees": total_employees,
+            "total_customers": total_customers,
             "most_recent_person": {
                 "person_id": recent_person.person_id,
-                "last_seen": recent_person.last_seen
+                "last_seen": recent_person.last_seen,
+                "role": recent_person.role
             } if recent_person else None,
             "most_detected_person": {
                 "person_id": most_detected.person_id,
-                "total_detections": most_detected.total_detections
+                "total_detections": most_detected.total_detections,
+                "role": most_detected.role
             } if most_detected else None
         }
     except Exception as e:

@@ -21,6 +21,7 @@ class SingleFaceDetection(BaseModel):
     last_seen: datetime
     total_detections: int
     bbox: BoundingBox
+    role: str  # New: "Employee" or "Customer"
 
 class DetectionResponse(BaseModel):
     success: bool
@@ -35,6 +36,7 @@ class PersonListResponse(BaseModel):
     last_seen: datetime
     total_detections: int
     average_confidence: float
+    role: str  # New: "Employee" or "Customer"
 
     class Config:
         from_attributes = True
