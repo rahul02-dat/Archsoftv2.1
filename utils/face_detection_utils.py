@@ -10,7 +10,7 @@ import pickle
 class UniformMatcher:
     """Analyzes clothing color to detect employees wearing uniforms"""
     
-    def __init__(self, reference_image_path: str = "/Users/rahulmac/Documents/Projects/projects/Archsoftv2.1/uniform_refrence.jpg"):
+    def __init__(self, reference_image_path: str = "uniform_refrence.jpg"):
         self.reference_hist = None
         self.reference_color_ranges = None  # Store dominant color ranges
         self.uniform_threshold = float(os.getenv("UNIFORM_THRESHOLD", "0.35"))  # Lowered from 0.4
