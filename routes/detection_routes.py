@@ -13,6 +13,10 @@ detection_router = APIRouter(prefix="/detection", tags=["Detection"])
 
 IST = pytz.timezone('Asia/Kolkata')
 
+# SECURITY: Strict thresholds for role upgrade
+ROLE_UPGRADE_UNIFORM_THRESHOLD = 0.7  # Require high uniform confidence
+ROLE_UPGRADE_FACE_CONFIDENCE = 0.6    # Require high face match confidence
+
 def generate_person_id(db: Session) -> str:
     """
     Generate a random person ID in format: PersonID:ABC123XYZ
@@ -60,6 +64,9 @@ async def recognize_face(
             confidence = 1.0
             should_increment = request.increment_detection
             
+            # This will hold the role to return in THIS detection response
+            current_session_role = detected_role
+            
             if stored_embeddings:
                 is_match, confidence, match_idx = face_recognition_system.verify_face(
                     embedding, 
@@ -71,10 +78,25 @@ async def recognize_face(
                     
                     current_time = datetime.now(IST)
                     
-                    # Role upgrade logic: Customer -> Employee (when detected wearing uniform)
-                    if matched_person.role == "Customer" and detected_role == "Employee":
+                    # FIXED: Privilege Escalation Vulnerability
+                    # We now require BOTH high uniform_score AND high face confidence
+                    # before permanently upgrading a Customer to Employee in the database
+                    should_upgrade_role = (
+                        matched_person.role == "Customer" and 
+                        detected_role == "Employee" and
+                        uniform_score >= ROLE_UPGRADE_UNIFORM_THRESHOLD and
+                        confidence >= ROLE_UPGRADE_FACE_CONFIDENCE
+                    )
+                    
+                    if should_upgrade_role:
                         matched_person.role = "Employee"
-                        print(f"✓ Role upgraded: {matched_person.person_id} Customer -> Employee (uniform detected)")
+                        print(f"✓ Role upgraded: {matched_person.person_id} Customer -> Employee")
+                        print(f"  - Uniform score: {uniform_score:.3f} (threshold: {ROLE_UPGRADE_UNIFORM_THRESHOLD})")
+                        print(f"  - Face confidence: {confidence:.3f} (threshold: {ROLE_UPGRADE_FACE_CONFIDENCE})")
+                    
+                    # For the current session, use the detected role regardless of database state
+                    # This allows temporary employee detection without permanent database changes
+                    current_session_role = detected_role
                     
                     # Update last seen time
                     last_seen = matched_person.last_seen
@@ -131,10 +153,12 @@ async def recognize_face(
                 
                 matched_person = new_person
                 confidence = 1.0
+                current_session_role = detected_role
             
             db.flush()
             db.refresh(matched_person)
             
+            # Return the current session role (which may differ from database role)
             detections.append(SingleFaceDetection(
                 is_match=is_match,
                 person_id=matched_person.person_id,
@@ -143,7 +167,7 @@ async def recognize_face(
                 last_seen=matched_person.last_seen,
                 total_detections=matched_person.total_detections,
                 bbox=BoundingBox(**bbox),
-                role=matched_person.role  # Include role in response
+                role=current_session_role  # Use session role, not necessarily DB role
             ))
         
         db.commit()
