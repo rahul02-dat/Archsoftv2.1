@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: archsoft_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: archsoft_db
+      MYSQL_USER: archsoft_user
+      MYSQL_PASSWORD: archsoft_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+    networks:
+      - archsoft_network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: archsoft_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql+pymysql://archsoft_user:archsoft_password@db:3306/archsoft_db"
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    command: bash -c "python main.py && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - archsoft_network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  archsoft_network:
+    driver: bridge
